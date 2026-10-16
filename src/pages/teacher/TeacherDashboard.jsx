@@ -31,6 +31,12 @@ export default function TeacherDashboard() {
   const chartRef = useRef(null)
   const chartInstance = useRef(null)
 
+  // Combobox states for override modal
+  const [allExercises, setAllExercises] = useState([])
+  const [overrideSearch, setOverrideSearch] = useState('')
+  const [showOverrideDropdown, setShowOverrideDropdown] = useState(false)
+  const overrideComboRef = useRef(null)
+
   useEffect(() => { loadInitialData() }, [])
 
   useEffect(() => {
@@ -46,13 +52,26 @@ export default function TeacherDashboard() {
     if (selectedStu && activeDay) buildChart()
   }, [exercises, suggested, logs])
 
+  // Click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (overrideComboRef.current && !overrideComboRef.current.contains(e.target)) {
+        setShowOverrideDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   async function loadInitialData() {
-    const [{ data: stus }, { data: daysData }] = await Promise.all([
+    const [{ data: stus }, { data: daysData }, { data: allEx }] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'student').order('name'),
-      supabase.from('training_days').select('*').order('order_index')
+      supabase.from('training_days').select('*').order('order_index'),
+      supabase.from('exercises').select('*').order('name')
     ])
     setStudents(stus || [])
     setDays(daysData || [])
+    setAllExercises(allEx || [])
     if (stus?.length) setSelectedStu(stus[0].id)
     if (daysData?.length) setActiveDay(daysData[0].id)
   }
@@ -95,14 +114,31 @@ export default function TeacherDashboard() {
   function openOverride(ex) {
     const existing = overrides[ex.id]
     setEditingOverride(ex)
+    const nameVal = existing?.custom_name || ex.name
     setOverrideForm({
-      custom_name: existing?.custom_name || ex.name,
+      custom_name: nameVal,
       custom_series: existing?.custom_series || ex.series,
       custom_reps: existing?.custom_reps || ex.reps,
       notes: existing?.notes || '',
     })
+    setOverrideSearch(nameVal)
     setShowOverrideModal(true)
   }
+
+  function selectOverrideExercise(ex) {
+    setOverrideForm(p => ({
+      ...p,
+      custom_name: ex.name,
+      custom_series: ex.series ?? p.custom_series,
+      custom_reps: ex.reps ?? p.custom_reps,
+    }))
+    setOverrideSearch(ex.name)
+    setShowOverrideDropdown(false)
+  }
+
+  const filteredOverrideExercises = allExercises.filter(ex =>
+    ex.name.toLowerCase().includes(overrideSearch.toLowerCase())
+  )
 
   async function loadExercises() {
     const { data } = await supabase
@@ -125,7 +161,6 @@ export default function TeacherDashboard() {
 
   async function loadLogs() {
     const monthYear = new Date().toISOString().slice(0, 7)
-    // FIX: usar maybeSingle() en vez de single() para evitar error cuando no hay sesión
     const { data: session } = await supabase
       .from('training_sessions')
       .select('id')
@@ -225,7 +260,6 @@ export default function TeacherDashboard() {
   }
 
   const currentStu = students.find(s => s.id === selectedStu)
-  const stuIndex = students.findIndex(s => s.id === selectedStu)
 
   return (
     <div className="space-y-5 py-4">
@@ -380,8 +414,47 @@ export default function TeacherDashboard() {
             <form onSubmit={saveOverride} className="space-y-3">
               <div>
                 <label className="label">Nombre del ejercicio</label>
-                <input className="input" value={overrideForm.custom_name}
-                  onChange={e => setOverrideForm(p => ({ ...p, custom_name: e.target.value }))} />
+                <div className="relative" ref={overrideComboRef}>
+                  <input
+                    className="input"
+                    value={overrideSearch}
+                    onChange={e => {
+                      setOverrideSearch(e.target.value)
+                      setOverrideForm(p => ({ ...p, custom_name: e.target.value }))
+                      setShowOverrideDropdown(true)
+                    }}
+                    onFocus={() => setShowOverrideDropdown(true)}
+                    placeholder="Buscar ejercicio..."
+                    autoComplete="off"
+                  />
+                  {showOverrideDropdown && filteredOverrideExercises.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {filteredOverrideExercises.map(ex => (
+                        <div
+                          key={ex.id}
+                          onMouseDown={() => selectOverrideExercise(ex)}
+                          className="px-3 py-2 hover:bg-primary-50 cursor-pointer text-sm text-gray-700"
+                        >
+                          {ex.name}
+                          {ex.muscle_group && (
+                            <span className="text-xs text-gray-400 ml-2">{ex.muscle_group}</span>
+                          )}
+                        </div>
+                      ))}
+                      {overrideSearch && !filteredOverrideExercises.find(e => e.name.toLowerCase() === overrideSearch.toLowerCase()) && (
+                        <div
+                          onMouseDown={() => {
+                            setOverrideForm(p => ({ ...p, custom_name: overrideSearch }))
+                            setShowOverrideDropdown(false)
+                          }}
+                          className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-500 border-t border-gray-100"
+                        >
+                          Usar "{overrideSearch}" como nombre personalizado
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
