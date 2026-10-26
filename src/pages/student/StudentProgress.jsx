@@ -64,7 +64,7 @@ export default function StudentProgress() {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { ticks: { callback: v => v + ' kg', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+          y: { ticks: { callback: v => Number(v.toFixed(1)) + ' kg', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
           x: { grid: { display: false }, ticks: { font: { size: 10 } } }
         }
       }
