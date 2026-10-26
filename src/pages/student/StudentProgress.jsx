@@ -32,7 +32,7 @@ export default function StudentProgress() {
       .eq('exercise_id', selectedEx)
       .eq('training_sessions.student_id', profile.id)
       .not('weight_used_kg', 'is', null)
-    setChartData(data?.filter(d => d.training_sessions).reverse() || [])
+    setChartData(data?.filter(d => d.training_sessions).sort((a, b) => a.training_sessions.week_number - b.training_sessions.week_number) || [])
   }
 
   function buildChart() {
