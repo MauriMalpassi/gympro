@@ -228,6 +228,22 @@ export default function RutinasPage() {
           muscle_group: form.muscle_group, video_url: form.video_url,
           order_index: maxOrder,
         })
+                 // Guardar en biblioteca si es ejercicio nuevo
+        const exists = allExercises.find(e => e.name.toLowerCase().trim() === form.name.toLowerCase().trim())
+        if (!exists) {
+          const { data: newEx } = await supabase.from('exercises').insert({
+            training_day_id: activeDay,
+            block_name: form.block_name,
+            block_order: form.block_name === 'Bloque 1' ? 1 : form.block_name === 'Bloque 2' ? 2 : 3,
+            name: form.name,
+            series: Number(form.series),
+            reps: Number(form.reps),
+            muscle_group: form.muscle_group,
+            video_url: form.video_url,
+            monthly_routine_id: activeRoutine,
+          }).select().single()
+          if (newEx) setAllExercises(p => [...p, newEx])
+        }       
         showToast('Ejercicio agregado')
       }
       setShowNewExercise(false)
