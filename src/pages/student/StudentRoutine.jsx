@@ -62,46 +62,50 @@ export default function StudentRoutine() {
     if (tcData) setTeacherConfig(tcData)
   }
 
-  async function loadRoutine() {
-    // Traer ejercicios base y pesos sugeridos en paralelo
+    async function loadRoutine() {
+    // Buscar rutina mensual activa primero
+    const { data: activeRoutine } = await supabase
+      .from('monthly_routines')
+      .select('id')
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (!activeRoutine) {
+      setExercises([])
+      return
+    }
+
+    // Traer ejercicios de la rutina activa y pesos sugeridos en paralelo
     const [{ data: exs }, { data: sw }] = await Promise.all([
-      supabase.from('exercises').select('*').eq('training_day_id', activeDay).order('order_index'),
+      supabase.from('exercises').select('*')
+        .eq('training_day_id', activeDay)
+        .eq('monthly_routine_id', activeRoutine.id)
+        .order('order_index'),
       supabase.from('suggested_weights').select('*').eq('student_id', profile.id)
     ])
 
     const baseExercises = exs || []
 
-    // Buscar rutina mensual activa
-    const { data: activeRoutine } = await supabase
-      .from('monthly_routines')
-      .select('id')
-      .eq('is_active', true)
-      .single()
+    // Traer monthly_exercises del mismo día para videos
+    const { data: monthlyExs } = await supabase
+      .from('monthly_exercises')
+      .select('order_index, video_url')
+      .eq('monthly_routine_id', activeRoutine.id)
+      .eq('training_day_id', activeDay)
+      .order('order_index')
 
-    if (activeRoutine) {
-      // Traer monthly_exercises del mismo día, ordenados por order_index
-      const { data: monthlyExs } = await supabase
-        .from('monthly_exercises')
-        .select('order_index, video_url')
-        .eq('monthly_routine_id', activeRoutine.id)
-        .eq('training_day_id', activeDay)
-        .order('order_index')
-
-      if (monthlyExs?.length) {
-        // Mapear por order_index → video_url
-        const videoByIndex = {}
-        monthlyExs.forEach(me => {
-          if (me.video_url && me.video_url !== 'EMPTY' && me.video_url.trim() !== '') {
-            videoByIndex[me.order_index] = me.video_url
-          }
-        })
-        // Asignar video_url a cada ejercicio base por su order_index
-        baseExercises.forEach(ex => {
-          if (videoByIndex[ex.order_index]) {
-            ex.video_url = videoByIndex[ex.order_index]
-          }
-        })
-      }
+    if (monthlyExs?.length) {
+      const videoByIndex = {}
+      monthlyExs.forEach(me => {
+        if (me.video_url && me.video_url !== 'EMPTY' && me.video_url.trim() !== '') {
+          videoByIndex[me.order_index] = me.video_url
+        }
+      })
+      baseExercises.forEach(ex => {
+        if (videoByIndex[ex.order_index]) {
+          ex.video_url = videoByIndex[ex.order_index]
+        }
+      })
     }
 
     setExercises(baseExercises)
@@ -133,7 +137,6 @@ export default function StudentRoutine() {
       setWeights({})
     }
   }
-
   async function autoSave(exerciseId, value) {
     if (!value || value === '') return
     try {
