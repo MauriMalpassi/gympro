@@ -66,9 +66,11 @@ export default function RutinasPage() {
     setLoading(true)
     try {
       const { data: currentExs } = await supabase
-        .from('exercises')
-        .select('*')
-        .order('order_index')
+  .from('monthly_exercises')
+  .select('*')
+  .eq('monthly_routine_id', (await supabase.from('monthly_routines').select('id').eq('is_active', true).maybeSingle()).data?.id)
+  .order('block_order')
+  .order('order_index')
 
       const { data: newRoutine } = await supabase
         .from('monthly_routines')
