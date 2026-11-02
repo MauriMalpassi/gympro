@@ -90,25 +90,24 @@ export default function StudentRoutine() {
     // Traer monthly_exercises del mismo día para videos
     const { data: monthlyExs } = await supabase
       .from('monthly_exercises')
-      .select('order_index, video_url')
+      .select('name, video_url')
       .eq('monthly_routine_id', activeRoutine.id)
       .eq('training_day_id', activeDay)
-      .order('order_index')
 
     if (monthlyExs?.length) {
-      const videoByIndex = {}
+      const videoByName = {}
       monthlyExs.forEach(me => {
         if (me.video_url && me.video_url !== 'EMPTY' && me.video_url.trim() !== '') {
-          videoByIndex[me.order_index] = me.video_url
+          videoByName[me.name.trim().toLowerCase()] = me.video_url
         }
       })
       baseExercises.forEach(ex => {
-        if (videoByIndex[ex.order_index]) {
-          ex.video_url = videoByIndex[ex.order_index]
+        const key = ex.name.trim().toLowerCase()
+        if (videoByName[key]) {
+          ex.video_url = videoByName[key]
         }
       })
     }
-
     setExercises(baseExercises)
 
     const sugMap = {}
