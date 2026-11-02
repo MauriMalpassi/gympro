@@ -319,29 +319,32 @@ export default function RutinasPage() {
       {currentRoutine && (
         <>
           {/* Info de la rutina */}
-          <div className={`card p-4 flex items-center justify-between gap-3 ${currentRoutine.is_active ? 'border-primary-400' : ''}`}>
+                   <div className={`card p-4 flex items-center justify-between gap-3 ${currentRoutine.is_active ? 'border-primary-400' : ''}`}>
             <div>
               <p className="font-medium text-gray-900">{currentRoutine.month_year}</p>
               <p className="text-xs mt-0.5">
                 {currentRoutine.is_active
                   ? <span className="text-primary-600 font-medium">✓ Activa — los alumnos ven esta rutina</span>
-                  : <span className="text-gray-400">En preparación — los alumnos aún no la ven</span>}
+                  : currentRoutine.month_year < new Date().toISOString().slice(0, 7)
+                  ? <span className="text-gray-400">📦 Archivada — solo lectura</span>
+                  : <span className="text-yellow-600">En preparación — los alumnos aún no la ven</span>}
               </p>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => openRename(currentRoutine)}
-                className="btn-secondary text-sm flex items-center gap-1.5">
-                <i className="ti ti-pencil text-xs" /> Cambiar mes
-              </button>
-              {!currentRoutine.is_active && (
-                <button onClick={() => activateRoutine(currentRoutine.id)}
-                  className="btn-primary text-sm flex items-center gap-2" disabled={loading}>
-                  {loading ? <i className="ti ti-loader animate-spin" /> : <i className="ti ti-player-play" />} Activar
-                </button>
+              {!currentRoutine.is_active && currentRoutine.month_year >= new Date().toISOString().slice(0, 7) && (
+                <>
+                  <button onClick={() => openRename(currentRoutine)}
+                    className="btn-secondary text-sm flex items-center gap-1.5">
+                    <i className="ti ti-pencil text-xs" /> Cambiar mes
+                  </button>
+                  <button onClick={() => activateRoutine(currentRoutine.id)}
+                    className="btn-primary text-sm flex items-center gap-2" disabled={loading}>
+                    {loading ? <i className="ti ti-loader animate-spin" /> : <i className="ti ti-player-play" />} Activar
+                  </button>
+                </>
               )}
             </div>
           </div>
-
           {/* Selector de día */}
           <div className="flex gap-2 flex-wrap">
             {days.map(d => (
