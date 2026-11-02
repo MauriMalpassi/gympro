@@ -80,6 +80,7 @@ export default function StudentRoutine() {
       supabase.from('exercises').select('*')
         .eq('training_day_id', activeDay)
         .eq('monthly_routine_id', activeRoutine.id)
+        .order('block_order')
         .order('order_index'),
       supabase.from('suggested_weights').select('*').eq('student_id', profile.id)
     ])
