@@ -141,23 +141,34 @@ export default function TeacherDashboard() {
   )
 
   async function loadExercises() {
-    const { data } = await supabase
-      .from('exercises')
-      .select('*')
-      .eq('training_day_id', activeDay)
-      .order('order_index')
-    setExercises(data || [])
+  // Buscar rutina activa primero
+  const { data: activeRoutine } = await supabase
+    .from('monthly_routines')
+    .select('id')
+    .eq('is_active', true)
+    .maybeSingle()
 
-    const { data: sw } = await supabase
-      .from('suggested_weights')
-      .select('*')
-      .eq('student_id', selectedStu)
-      .in('exercise_id', (data || []).map(e => e.id))
+  if (!activeRoutine) { setExercises([]); return }
 
-    const map = {}
-    sw?.forEach(s => { map[s.exercise_id] = s.weight_kg })
-    setSuggested(map)
-  }
+  const { data } = await supabase
+    .from('exercises')
+    .select('*')
+    .eq('training_day_id', activeDay)
+    .eq('monthly_routine_id', activeRoutine.id)
+    .order('block_order')
+    .order('order_index')
+  setExercises(data || [])
+
+  const { data: sw } = await supabase
+    .from('suggested_weights')
+    .select('*')
+    .eq('student_id', selectedStu)
+    .in('exercise_id', (data || []).map(e => e.id))
+
+  const map = {}
+  sw?.forEach(s => { map[s.exercise_id] = s.weight_kg })
+  setSuggested(map)
+}
 
   async function loadLogs() {
     const monthYear = new Date().toISOString().slice(0, 7)
@@ -210,44 +221,53 @@ export default function TeacherDashboard() {
   }
 
   function buildChart() {
-    if (!chartRef.current) return
-    if (chartInstance.current) chartInstance.current.destroy()
+  if (!chartRef.current) return
+  if (chartInstance.current) chartInstance.current.destroy()
 
-    const top5 = exercises.slice(0, 5)
-    const labels = top5.map(e => {
-      const name = overrides[e.id]?.custom_name || e.name
-      return name.length > 18 ? name.slice(0, 18) + '…' : name
-    })
-    const dataUsed = top5.map(e => logs[e.id] ?? null)
-    const dataSug = top5.map(e => suggested[e.id] ?? 0)
+  const labels = exercises.map(e => {
+    const name = overrides[e.id]?.custom_name || e.name
+    return name.length > 18 ? name.slice(0, 18) + '…' : name
+  })
+  const dataUsed = exercises.map(e => logs[e.id] ?? null)
+  const dataSug = exercises.map(e => suggested[e.id] ?? 0)
 
-    chartInstance.current = new Chart(chartRef.current, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Utilizado (kg)',
-            data: dataUsed,
-            backgroundColor: 'rgba(29,158,117,0.7)',
-            borderColor: '#1D9E75',
-            borderWidth: 1.5,
-            borderRadius: 6,
-          },
-          {
-            label: 'Sugerido (kg)',
-            data: dataSug,
-            type: 'line',
-            borderColor: '#BA7517',
-            borderDash: [4, 3],
-            borderWidth: 2,
-            pointRadius: 4,
-            pointBackgroundColor: '#BA7517',
-            fill: false,
-            tension: 0.3,
-          }
-        ]
-      },
+  chartInstance.current = new Chart(chartRef.current, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Utilizado (kg)',
+          data: dataUsed,
+          backgroundColor: 'rgba(29,158,117,0.7)',
+          borderColor: '#1D9E75',
+          borderWidth: 1.5,
+          borderRadius: 6,
+        },
+        {
+          label: 'Sugerido (kg)',
+          data: dataSug,
+          type: 'line',
+          borderColor: '#BA7517',
+          borderDash: [4, 3],
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: '#BA7517',
+          fill: false,
+          tension: 0.3,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { callback: v => v + ' kg', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  })
+}
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
