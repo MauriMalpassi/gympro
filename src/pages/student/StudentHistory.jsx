@@ -15,23 +15,53 @@ export default function StudentHistory() {
   }, [profile])
 
   async function loadHistory() {
-    const { data } = await supabase
+    // Paso 1: traer sesiones con días
+    const { data: sessionsData } = await supabase
       .from('training_sessions')
-      .select(`
-        *,
-        training_days(name),
-        exercise_logs(
-          weight_used_kg, series_done, reps_done,
-          exercises(name, block_name, series, reps)
-        )
-      `)
+      .select('*, training_days(name)')
       .eq('student_id', profile.id)
       .order('completed_at', { ascending: false })
 
-    const all = data || []
-    setSessions(all)
+    if (!sessionsData?.length) {
+      setSessions([])
+      setLoading(false)
+      return
+    }
 
-    // Obtener meses disponibles
+    // Paso 2: traer todos los logs de esas sesiones
+    const sessionIds = sessionsData.map(s => s.id)
+    const { data: logsData } = await supabase
+      .from('exercise_logs')
+      .select('session_id, exercise_id, weight_used_kg, series_done, reps_done')
+      .in('session_id', sessionIds)
+
+    // Paso 3: traer nombres de ejercicios
+    const exerciseIds = [...new Set((logsData || []).map(l => l.exercise_id))]
+    let exerciseMap = {}
+    if (exerciseIds.length) {
+      const { data: exsData } = await supabase
+        .from('exercises')
+        .select('id, name, block_name')
+        .in('id', exerciseIds)
+      exsData?.forEach(e => { exerciseMap[e.id] = e })
+    }
+
+    // Combinar todo
+    const logsBySession = {}
+    logsData?.forEach(log => {
+      if (!logsBySession[log.session_id]) logsBySession[log.session_id] = []
+      logsBySession[log.session_id].push({
+        ...log,
+        exercises: exerciseMap[log.exercise_id] || null
+      })
+    })
+
+    const all = sessionsData.map(s => ({
+      ...s,
+      exercise_logs: logsBySession[s.id] || []
+    }))
+
+    setSessions(all)
     const months = [...new Set(all.map(s => s.month_year))].sort().reverse()
     setAvailableMonths(months)
     if (months.length) setSelectedMonth(months[0])
@@ -46,8 +76,6 @@ export default function StudentHistory() {
   }
 
   const filteredSessions = sessions.filter(s => s.month_year === selectedMonth)
-
-  // Resumen del mes
   const totalSessions = filteredSessions.length
   const totalExercises = filteredSessions.reduce((a, s) => a + (s.exercise_logs?.filter(l => l.weight_used_kg).length || 0), 0)
   const trainingDays = [...new Set(filteredSessions.map(s => s.training_days?.name))].filter(Boolean)
@@ -68,7 +96,6 @@ export default function StudentHistory() {
 
   return (
     <div className="py-4 space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-medium text-gray-800 flex items-center gap-2">
           <i className="ti ti-history text-primary-400" /> Historial
@@ -79,7 +106,6 @@ export default function StudentHistory() {
         </button>
       </div>
 
-      {/* Selector de mes */}
       <div>
         <p className="label mb-2">Mes</p>
         <div className="flex gap-2 flex-wrap">
@@ -95,7 +121,6 @@ export default function StudentHistory() {
         </div>
       </div>
 
-      {/* Resumen del mes */}
       {selectedMonth && (
         <div className="card p-4">
           <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
@@ -126,7 +151,6 @@ export default function StudentHistory() {
         </div>
       )}
 
-      {/* Lista de sesiones */}
       <div className="space-y-3">
         {filteredSessions.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
@@ -153,7 +177,7 @@ export default function StudentHistory() {
               <div className="flex flex-wrap gap-2">
                 {session.exercise_logs?.filter(l => l.weight_used_kg).map((log, i) => (
                   <span key={i} className="text-xs px-2.5 py-1 bg-gray-100 rounded-lg text-gray-700">
-                    {log.exercises?.name} <strong className="text-primary-600">{log.weight_used_kg} kg</strong>
+                    {log.exercises?.name || 'Ejercicio'} <strong className="text-primary-600">{log.weight_used_kg} kg</strong>
                   </span>
                 ))}
               </div>
