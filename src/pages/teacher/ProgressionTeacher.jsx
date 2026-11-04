@@ -76,7 +76,7 @@ export default function ProgressionTeacher() {
       .filter(s => logMap[s.id] !== undefined)
       .map(s => ({
         label: `${s.month_year} S${s.week_number}`,
-        actual: logMap[s.id],
+        actual: Math.round(logMap[s.id] * 10) / 10,
         suggested: suggestedKg,
       }))
 
@@ -172,7 +172,7 @@ export default function ProgressionTeacher() {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
                 scales: {
-                  y: { ticks: { callback: v => v + ' kg', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,.05)' } },
+                  y: { ticks: { callback: v => Math.round(v * 10) / 10 + ' kg', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,.05)' } },
                   x: { grid: { display: false }, ticks: { font: { size: 11 } } }
                 }
               }}
@@ -227,7 +227,7 @@ function AllExercisesSummary({ studentId, studentName }) {
         const name = exMap[l.exercise_id]
         if (!name) return
         if (!maxByEx[name] || l.weight_used_kg > maxByEx[name]) {
-          maxByEx[name] = l.weight_used_kg
+          maxByEx[name] = Math.round(l.weight_used_kg * 10) / 10
         }
       })
 
