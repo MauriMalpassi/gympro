@@ -172,7 +172,7 @@ export default function ProgressionTeacher() {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
                 scales: {
-                  y: { ticks: { callback: v => Math.round(v * 10) / 10 + ' kg', font: { size: 11 }, precision: 1, stepSize: 0.5 }, grid: { color: 'rgba(0,0,0,.05)' } },
+                  y: { ticks: { callback: v => Number.isInteger(v * 2) ? (Math.round(v * 10) / 10) + ' kg' : '', font: { size: 11 }, maxTicksLimit: 8 }, grid: { color: 'rgba(0,0,0,.05)' } },
                   x: { grid: { display: false }, ticks: { font: { size: 11 } } }
                 }
               }}
