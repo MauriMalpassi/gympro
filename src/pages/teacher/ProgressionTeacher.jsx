@@ -19,12 +19,12 @@ export default function ProgressionTeacher() {
   const [loading, setLoading]     = useState(false)
 
   useEffect(() => {
-    supabase.from('profiles').select('*').eq('role', 'student').order('full_name')
+    supabase.from('profiles').select('*').eq('role', 'student').order('name')
       .then(({ data }) => {
         setStudents(data || [])
         if (!selStu && data?.length) setSelStu(data[0].id)
       })
-    supabase.from('exercises').select('*').order('name')
+    supabase.from('exercises').select('id, name').order('name')
       .then(({ data }) => {
         setExercises(data || [])
         if (!selEx && data?.length) setSelEx(data[0].id)
@@ -37,26 +37,57 @@ export default function ProgressionTeacher() {
 
   async function loadChart() {
     setLoading(true)
+
+    // 1. Buscar todas las sesiones del alumno
     const { data: sessions } = await supabase
-      .from('sessions')
-      .select('*, routine_items!inner(exercise_id, day_of_week, suggested_kg)')
+      .from('training_sessions')
+      .select('id, week_number, month_year')
       .eq('student_id', selStu)
-      .eq('routine_items.exercise_id', selEx)
+      .order('month_year')
       .order('week_number')
-      .order('logged_at')
 
     if (!sessions?.length) { setChartData(null); setLoading(false); return }
 
-    const labels = sessions.map(s => `${s.routine_items.day_of_week} S${s.week_number}`)
-    const actual  = sessions.map(s => s.actual_kg)
-    const suggested = sessions.map(s => s.routine_items.suggested_kg)
+    // 2. Buscar logs de ese ejercicio en esas sesiones
+    const sessionIds = sessions.map(s => s.id)
+    const { data: logs } = await supabase
+      .from('exercise_logs')
+      .select('session_id, weight_used_kg')
+      .eq('exercise_id', selEx)
+      .in('session_id', sessionIds)
+
+    if (!logs?.length) { setChartData(null); setLoading(false); return }
+
+    // 3. Buscar peso sugerido
+    const { data: sugData } = await supabase
+      .from('suggested_weights')
+      .select('weight_kg')
+      .eq('student_id', selStu)
+      .eq('exercise_id', selEx)
+      .maybeSingle()
+
+    const suggestedKg = sugData?.weight_kg ?? 0
+
+    // 4. Combinar datos
+    const logMap = {}
+    logs.forEach(l => { logMap[l.session_id] = l.weight_used_kg })
+
+    const points = sessions
+      .filter(s => logMap[s.id] !== undefined)
+      .map(s => ({
+        label: `${s.month_year} S${s.week_number}`,
+        actual: logMap[s.id],
+        suggested: suggestedKg,
+      }))
+
+    if (!points.length) { setChartData(null); setLoading(false); return }
 
     setChartData({
-      labels,
+      labels: points.map(p => p.label),
       datasets: [
         {
           label: 'Peso utilizado',
-          data: actual,
+          data: points.map(p => p.actual),
           borderColor: '#1DB97A',
           backgroundColor: 'rgba(29,185,122,.08)',
           borderWidth: 2.5,
@@ -67,7 +98,7 @@ export default function ProgressionTeacher() {
         },
         {
           label: 'Peso sugerido',
-          data: suggested,
+          data: points.map(p => p.suggested),
           borderColor: '#EF9F27',
           borderDash: [5, 4],
           borderWidth: 1.5,
@@ -81,7 +112,7 @@ export default function ProgressionTeacher() {
   }
 
   const selectedExName = exercises.find(e => e.id === selEx)?.name || ''
-  const selectedStuName = students.find(s => s.id === selStu)?.full_name || ''
+  const selectedStuName = students.find(s => s.id === selStu)?.name || ''
 
   return (
     <div className="space-y-6 fade-up">
@@ -95,7 +126,7 @@ export default function ProgressionTeacher() {
         <div>
           <label className="label">Alumno</label>
           <select className="input" value={selStu} onChange={e => setSelStu(e.target.value)}>
-            {students.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+            {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div>
@@ -159,33 +190,62 @@ export default function ProgressionTeacher() {
 }
 
 function AllExercisesSummary({ studentId, studentName }) {
-  const [data, setData] = useState([])
+  const [summary, setSummary] = useState([])
 
   useEffect(() => {
-    supabase
-      .from('sessions')
-      .select('actual_kg, week_number, routine_items(exercises(name), day_of_week)')
-      .eq('student_id', studentId)
-      .order('logged_at', { ascending: false })
-      .limit(50)
-      .then(({ data }) => setData(data || []))
+    async function load() {
+      // 1. Sesiones del alumno
+      const { data: sessions } = await supabase
+        .from('training_sessions')
+        .select('id')
+        .eq('student_id', studentId)
+
+      if (!sessions?.length) { setSummary([]); return }
+
+      // 2. Logs de esas sesiones
+      const sessionIds = sessions.map(s => s.id)
+      const { data: logs } = await supabase
+        .from('exercise_logs')
+        .select('exercise_id, weight_used_kg')
+        .in('session_id', sessionIds)
+
+      if (!logs?.length) { setSummary([]); return }
+
+      // 3. Nombres de ejercicios
+      const exerciseIds = [...new Set(logs.map(l => l.exercise_id))]
+      const { data: exs } = await supabase
+        .from('exercises')
+        .select('id, name')
+        .in('id', exerciseIds)
+
+      const exMap = {}
+      exs?.forEach(e => { exMap[e.id] = e.name })
+
+      // 4. Máximo por ejercicio
+      const maxByEx = {}
+      logs.forEach(l => {
+        const name = exMap[l.exercise_id]
+        if (!name) return
+        if (!maxByEx[name] || l.weight_used_kg > maxByEx[name]) {
+          maxByEx[name] = l.weight_used_kg
+        }
+      })
+
+      const entries = Object.entries(maxByEx)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+      setSummary(entries)
+    }
+    load()
   }, [studentId])
 
-  // Group by exercise, get max
-  const summary = {}
-  data.forEach(s => {
-    const name = s.routine_items?.exercises?.name
-    if (!name) return
-    if (!summary[name] || s.actual_kg > summary[name]) summary[name] = s.actual_kg
-  })
-  const entries = Object.entries(summary).slice(0, 8)
-  if (!entries.length) return null
+  if (!summary.length) return null
 
   return (
     <div className="card p-4">
       <h2 className="text-sm font-medium text-iron-800 mb-3">Mejores marcas — {studentName}</h2>
       <div className="space-y-2">
-        {entries.map(([name, kg]) => (
+        {summary.map(([name, kg]) => (
           <div key={name} className="flex items-center gap-3">
             <span className="flex-1 text-sm text-iron-700 truncate">{name}</span>
             <div className="flex-1 bg-iron-100 rounded-full h-1.5 overflow-hidden">
